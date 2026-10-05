@@ -1,0 +1,30 @@
+{
+  "name": "meshcentral-firmware",
+  "version": "1.0.0",
+  "description": "Intel AMT Firmware Web Application Compiler & Loader for MeshCommander",
+  "scripts": {
+    "build": "node compile-firmware.js",
+    "build:small": "node compile-firmware.js small",
+    "build:medium": "node compile-firmware.js medium",
+    "build:large": "node compile-firmware.js large",
+    "load": "node amt-load-webapp.js",
+    "check-upstream": "node scripts/check-upstream.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JamaicanMoose/meshcommander-fw.git"
+  },
+  "dependencies": {
+    "clean-css": "^5.3.3",
+    "html-minifier": "^4.0.0",
+    "terser": "^5.39.0"
+  },
+  "keywords": [
+    "intel-amt",
+    "meshcommander",
+    "meshcentral",
+    "firmware",
+    "vpro"
+  ],
+  "license": "Apache-2.0"
+}
