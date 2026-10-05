@@ -1,0 +1,112 @@
+name: Check Upstream & Build Firmware Release
+
+on:
+  schedule:
+    # Run once daily at 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force build and release even if upstream version is not newer'
+        required: false
+        type: boolean
+        default: false
+      target_version:
+        description: 'Override target version to build (leave empty for auto-detect)'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install AdvanceCOMP (advdef)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y advancecomp
+
+      - name: Check for newer upstream release
+        id: check
+        run: node scripts/check-upstream.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_RELEASE: ${{ github.event.inputs.force }}
+          TARGET_VERSION: ${{ github.event.inputs.target_version }}
+          UPSTREAM_REPO: 'Ylianst/MeshCommander'
+          OUR_REPO: ${{ github.repository }}
+
+      - name: Fetch upstream MeshCommander source
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          echo "Fetching MeshCommander source for ref ${{ steps.check.outputs.ref }}..."
+          rm -rf commander
+          git clone --depth 1 https://github.com/Ylianst/MeshCommander.git commander
+          if [ "${{ steps.check.outputs.ref }}" != "master" ] && [ -n "${{ steps.check.outputs.ref }}" ]; then
+            cd commander
+            git fetch --depth 1 origin "${{ steps.check.outputs.ref }}" || true
+            git checkout "${{ steps.check.outputs.ref }}" || true
+            cd ..
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.should_build == 'true'
+        run: pnpm install
+
+      - name: Compile firmware packages
+        if: steps.check.outputs.should_build == 'true'
+        run: node compile-firmware.js
+
+      - name: Verify build artifacts
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          ls -la output/
+          test -f output/Firmware-Small.htm
+          test -f output/Firmware-Small.gz
+          test -f output/Firmware-Medium.htm
+          test -f output/Firmware-Medium.gz
+          test -f output/Firmware-Large.htm
+          test -f output/Firmware-Large.gz
+          test -f output/firmware-payloads.js
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.should_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.check.outputs.tag }}
+          name: ${{ steps.check.outputs.tag }}
+          body: ""
+          generate_release_notes: false
+          files: |
+            output/Firmware-Small.htm
+            output/Firmware-Small.gz
+            output/Firmware-Medium.htm
+            output/Firmware-Medium.gz
+            output/Firmware-Large.htm
+            output/Firmware-Large.gz
+            output/firmware-payloads.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
